@@ -19,9 +19,10 @@ defmodule Handroll.Accounts.AccountToken do
     field :context, :string
     field :sent_to, :string
     field :authenticated_at, :utc_datetime_usec
-    belongs_to :account, Handroll.Accounts.Account
 
     timestamps(type: :utc_datetime_usec, updated_at: false)
+
+    belongs_to :account, Handroll.Accounts.Account
   end
 
   @doc """
@@ -46,7 +47,9 @@ defmodule Handroll.Accounts.AccountToken do
   def build_session_token(account) do
     token = :crypto.strong_rand_bytes(@rand_size)
     dt = account.authenticated_at || DateTime.utc_now()
-    {token, %AccountToken{token: token, context: "session", account_id: account.id, authenticated_at: dt}}
+
+    {token,
+     %AccountToken{token: token, context: "session", account_id: account.id, authenticated_at: dt}}
   end
 
   @doc """

@@ -167,13 +167,22 @@ defmodule HandrollWeb.AccountLive.SettingsTest do
 
       token =
         extract_account_token(fn url ->
-          Accounts.deliver_account_update_email_instructions(%{account | email: email}, account.email, url)
+          Accounts.deliver_account_update_email_instructions(
+            %{account | email: email},
+            account.email,
+            url
+          )
         end)
 
       %{conn: log_in_account(conn, account), token: token, email: email, account: account}
     end
 
-    test "updates the account email once", %{conn: conn, account: account, token: token, email: email} do
+    test "updates the account email once", %{
+      conn: conn,
+      account: account,
+      token: token,
+      email: email
+    } do
       {:error, redirect} = live(conn, ~p"/accounts/settings/confirm-email/#{token}")
 
       assert {:live_redirect, %{to: path, flash: flash}} = redirect

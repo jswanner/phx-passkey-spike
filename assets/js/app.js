@@ -20,18 +20,90 @@
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html"
 // Establish Phoenix Socket and LiveView configuration.
-import {Socket} from "phoenix"
-import {LiveSocket} from "phoenix_live_view"
+import { Socket } from "phoenix"
+import { LiveSocket } from "phoenix_live_view"
 import topbar from "../vendor/topbar"
+
+function arrayBufferToBase64(arrayBuffer) {
+  return btoa(String.fromCharCode.apply(null, new Uint8Array(arrayBuffer)))
+}
+
+const hooks = {
+  createCredential: {
+    async createCredential() {
+      const json = await this.pushEvent("generate_credential_registration", {});
+      const publicKey = await PublicKeyCredential.parseCreationOptionsFromJSON(json);
+      const credential = await navigator.credentials.create({ publicKey });
+      await this.pushEvent("store_credential", {
+        credential: {
+          ...credential,
+          clientExtensionResults: credential.getClientExtensionResults(),
+          rawId: arrayBufferToBase64(credential.rawId),
+          response: {
+            ...credential.response,
+            attestationObject: arrayBufferToBase64(credential.response.attestationObject),
+            authenticatorData: arrayBufferToBase64(credential.response.getAuthenticatorData()),
+            clientDataJSON: arrayBufferToBase64(credential.response.clientDataJSON),
+            publicKey: arrayBufferToBase64(credential.response.getPublicKey()),
+            publicKeyAlgorithm: credential.response.getPublicKeyAlgorithm(),
+            transports: credential.response.getTransports(),
+          }
+        }
+      });
+    },
+    destroyed() {
+      document.removeEventListener("create_credential", this.createCredential, false);
+    },
+    async mounted() {
+      this.createCredential = this.createCredential.bind(this);
+      document.addEventListener("create_credential", this.createCredential, false);
+      if (window.PublicKeyCredential && PublicKeyCredential.getClientCapabilities) {
+        const capabilities = await PublicKeyCredential.getClientCapabilities();
+        await this.pushEvent("update_capabilities", capabilities);
+      }
+    }
+  },
+  getCredential: {
+    async getCredential() {
+      const json = await this.pushEvent("generate_credential_authentication", {});
+      const publicKey = await PublicKeyCredential.parseRequestOptionsFromJSON(json);
+      const credential = await navigator.credentials.get({ mediation: "conditional", publicKey });
+      await this.pushEvent("authenticate_credential", {
+        credential: {
+          ...credential,
+          clientExtensionResults: credential.getClientExtensionResults(),
+          rawId: arrayBufferToBase64(credential.rawId),
+          response: {
+            ...credential.response,
+            authenticatorData: arrayBufferToBase64(credential.response.authenticatorData),
+            clientDataJSON: arrayBufferToBase64(credential.response.clientDataJSON),
+            signature: arrayBufferToBase64(credential.response.signature),
+            userHandle: arrayBufferToBase64(credential.response.userHandle),
+          }
+        }
+      });
+    },
+    async mounted() {
+      if (window.PublicKeyCredential && PublicKeyCredential.getClientCapabilities) {
+        const capabilities = await PublicKeyCredential.getClientCapabilities();
+
+        if (capabilities.conditionalGet) {
+          this.getCredential();
+        }
+      }
+    }
+  }
+};
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
+  hooks,
   longPollFallbackMs: 2500,
-  params: {_csrf_token: csrfToken}
+  params: { _csrf_token: csrfToken }
 })
 
 // Show progress bar on live navigation and form submits
-topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
+topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" })
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
@@ -51,7 +123,7 @@ window.liveSocket = liveSocket
 //     2. click on elements to jump to their definitions in your code editor
 //
 if (process.env.NODE_ENV === "development") {
-  window.addEventListener("phx:live_reload:attached", ({detail: reloader}) => {
+  window.addEventListener("phx:live_reload:attached", ({ detail: reloader }) => {
     // Enable server log streaming to client.
     // Disable with reloader.disableServerLogs()
     reloader.enableServerLogs()
@@ -62,13 +134,13 @@ if (process.env.NODE_ENV === "development") {
     //   * click with "d" key pressed to open at function component definition location
     let keyDown
     window.addEventListener("keydown", e => keyDown = e.key)
-    window.addEventListener("keyup", e => keyDown = null)
+    window.addEventListener("keyup", _e => keyDown = null)
     window.addEventListener("click", e => {
-      if(keyDown === "c"){
+      if (keyDown === "c") {
         e.preventDefault()
         e.stopImmediatePropagation()
         reloader.openEditorAtCaller(e.target)
-      } else if(keyDown === "d"){
+      } else if (keyDown === "d") {
         e.preventDefault()
         e.stopImmediatePropagation()
         reloader.openEditorAtDef(e.target)

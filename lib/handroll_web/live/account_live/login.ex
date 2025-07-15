@@ -2,6 +2,7 @@ defmodule HandrollWeb.AccountLive.Login do
   use HandrollWeb, :live_view
 
   alias Handroll.Accounts
+  alias Handroll.Accounts.AccountToken
 
   def render(assigns) do
     ~H"""
@@ -37,16 +38,19 @@ defmodule HandrollWeb.AccountLive.Login do
           for={@form}
           id="login_form_magic"
           action={~p"/accounts/log-in"}
+          phx-hook="getCredential"
           phx-submit="submit_magic"
+          phx-trigger-action={@trigger_passkey_submit}
         >
+          <input type="hidden" name="account[passkey]" value={@token} />
           <.input
-            readonly={!!@current_scope}
+            autocomplete="username webauthn"
+            autofocus
             field={f[:email]}
-            type="email"
             label="Email"
-            autocomplete="username"
+            readonly={!!@current_scope}
             required
-            phx-mounted={JS.focus()}
+            type="email"
           />
           <.button class="w-full" variant="primary">
             Log in with email <span aria-hidden="true">→</span>
@@ -61,7 +65,7 @@ defmodule HandrollWeb.AccountLive.Login do
           id="login_form_password"
           action={~p"/accounts/log-in"}
           phx-submit="submit_password"
-          phx-trigger-action={@trigger_submit}
+          phx-trigger-action={@trigger_password_submit}
         >
           <.input
             readonly={!!@current_scope}
@@ -99,11 +103,62 @@ defmodule HandrollWeb.AccountLive.Login do
 
     form = to_form(%{"email" => email}, as: "account")
 
-    {:ok, assign(socket, form: form, trigger_submit: false)}
+    {:ok,
+     assign(socket,
+       form: form,
+       token: nil,
+       trigger_passkey_submit: false,
+       trigger_password_submit: false
+     )}
+  end
+
+  def handle_event("authenticate_credential", params, socket) do
+    with {:ok, bin_auth_data} <-
+           Base.decode64(params["credential"]["response"]["authenticatorData"], padding: false),
+         {:ok, client_data} <-
+           Base.decode64(params["credential"]["response"]["clientDataJSON"], padding: false),
+         {:ok, credential_id} <-
+           Base.url_decode64(params["credential"]["id"], padding: false),
+         {:ok, signature} <-
+           Base.decode64(params["credential"]["response"]["signature"], padding: false),
+         credential <- Accounts.get_credential!(credential_id),
+         {:ok, _auth_data} <-
+           Wax.authenticate(
+             credential_id,
+             bin_auth_data,
+             signature,
+             client_data,
+             socket.assigns.challenge,
+             [{credential.id, credential.public_key}]
+           ),
+         {encoded_token, account_token} <-
+           AccountToken.build_email_token(credential.account, "login"),
+         {:ok, _} <- Handroll.Repo.insert(account_token) do
+      {:noreply, assign(socket, token: encoded_token, trigger_passkey_submit: true)}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Passkey authentication failed :(")}
+    end
+  end
+
+  def handle_event("generate_credential_authentication", params, socket) do
+    challenge =
+      Wax.new_authentication_challenge(
+        origin: HandrollWeb.Endpoint.url(),
+        rp_id: HandrollWeb.Endpoint.host()
+      )
+
+    reply = %{
+      allowCredentials: challenge.allow_credentials,
+      challenge: Base.url_encode64(challenge.bytes, padding: false),
+      rpId: challenge.rp_id,
+      userVerification: challenge.user_verification
+    }
+
+    {:reply, reply, assign(socket, :challenge, challenge)}
   end
 
   def handle_event("submit_password", _params, socket) do
-    {:noreply, assign(socket, :trigger_submit, true)}
+    {:noreply, assign(socket, :trigger_password_submit, true)}
   end
 
   def handle_event("submit_magic", %{"account" => %{"email" => email}}, socket) do

@@ -139,7 +139,11 @@ defmodule Handroll.AccountsTest do
 
       token =
         extract_account_token(fn url ->
-          Accounts.deliver_account_update_email_instructions(%{account | email: email}, account.email, url)
+          Accounts.deliver_account_update_email_instructions(
+            %{account | email: email},
+            account.email,
+            url
+          )
         end)
 
       %{account: account, token: token, email: email}
@@ -160,7 +164,9 @@ defmodule Handroll.AccountsTest do
     end
 
     test "does not update email if account email changed", %{account: account, token: token} do
-      assert Accounts.update_account_email(%{account | email: "current@example.com"}, token) == :error
+      assert Accounts.update_account_email(%{account | email: "current@example.com"}, token) ==
+               :error
+
       assert Repo.get!(Account, account.id).email == account.email
       assert Repo.get_by(AccountToken, account_id: account.id)
     end

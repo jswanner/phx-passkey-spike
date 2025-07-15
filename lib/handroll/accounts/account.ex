@@ -11,6 +11,8 @@ defmodule Handroll.Accounts.Account do
     field :authenticated_at, :utc_datetime_usec, virtual: true
 
     timestamps(type: :utc_datetime_usec)
+
+    has_many :credentials, Handroll.Accounts.Credential
   end
 
   @doc """

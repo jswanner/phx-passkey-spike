@@ -11,7 +11,10 @@ defmodule HandrollWeb.AccountLive.ConfirmationTest do
   end
 
   describe "Confirm account" do
-    test "renders confirmation page for unconfirmed account", %{conn: conn, unconfirmed_account: account} do
+    test "renders confirmation page for unconfirmed account", %{
+      conn: conn,
+      unconfirmed_account: account
+    } do
       token =
         extract_account_token(fn url ->
           Accounts.deliver_login_instructions(account, url)

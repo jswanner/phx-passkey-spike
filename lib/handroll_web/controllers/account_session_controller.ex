@@ -12,6 +12,23 @@ defmodule HandrollWeb.AccountSessionController do
     create(conn, params, "Welcome back!")
   end
 
+  # passkey login
+  defp create(conn, %{"account" => %{"passkey" => token} = account_params}, info) do
+    case Accounts.login_account_by_magic_link(token) do
+      {:ok, account, tokens_to_disconnect} ->
+        AccountAuth.disconnect_sessions(tokens_to_disconnect)
+
+        conn
+        |> put_flash(:info, info)
+        |> AccountAuth.log_in_account(account, account_params)
+
+      _ ->
+        conn
+        |> put_flash(:error, "The link is invalid or it has expired.")
+        |> redirect(to: ~p"/accounts/log-in")
+    end
+  end
+
   # magic link login
   defp create(conn, %{"account" => %{"token" => token} = account_params}, info) do
     case Accounts.login_account_by_magic_link(token) do

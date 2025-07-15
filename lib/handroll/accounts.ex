@@ -4,9 +4,36 @@ defmodule Handroll.Accounts do
   """
 
   import Ecto.Query, warn: false
+
+  alias Ecto.Changeset
+  alias Handroll.Accounts.Account
+  alias Handroll.Accounts.AccountNotifier
+  alias Handroll.Accounts.AccountToken
+  alias Handroll.Accounts.Credential
   alias Handroll.Repo
 
-  alias Handroll.Accounts.{Account, AccountToken, AccountNotifier}
+  @doc """
+  Returns an `%Ecto.Changeset{}` for changing a credential.
+
+  ## Examples
+
+      iex> change_credential(credential, attrs)
+      %Ecto.Changeset{data: %Credential{}}
+
+  """
+  def change_credential(credential, attrs \\ %{}) do
+    credential
+    |> Changeset.cast(attrs, [:description])
+  end
+
+  @doc """
+  Creates a credential
+  """
+  def create_credential(scope, attrs) do
+    Ecto.build_assoc(scope.account, :credentials)
+    |> Changeset.cast(attrs, [:description, :id, :public_key])
+    |> Repo.insert()
+  end
 
   ## Database getters
 
@@ -59,6 +86,27 @@ defmodule Handroll.Accounts do
 
   """
   def get_account!(id), do: Repo.get!(Account, id)
+
+  @doc """
+  Gets a account by credential ID.
+
+  ## Examples
+
+      iex> get_credential!("abcd1234")
+      %Credential{}
+
+      iex> get_credential!("unknown6789")
+      ** (Ecto.NoResultsError)
+
+  """
+  def get_credential!(credential_id) when is_binary(credential_id) do
+    Repo.get!(from(Credential, preload: :account), credential_id)
+  end
+
+  def list_credentials(scope) do
+    from(c in Credential, where: c.account_id == ^scope.account.id)
+    |> Repo.all()
+  end
 
   ## Account registration
 
@@ -133,7 +181,10 @@ defmodule Handroll.Accounts do
 
     Ecto.Multi.new()
     |> Ecto.Multi.update(:account, changeset)
-    |> Ecto.Multi.delete_all(:tokens, AccountToken.by_account_and_contexts_query(account, [context]))
+    |> Ecto.Multi.delete_all(
+      :tokens,
+      AccountToken.by_account_and_contexts_query(account, [context])
+    )
   end
 
   @doc """
@@ -263,12 +314,21 @@ defmodule Handroll.Accounts do
       {:ok, %{to: ..., body: ...}}
 
   """
-  def deliver_account_update_email_instructions(%Account{} = account, current_email, update_email_url_fun)
+  def deliver_account_update_email_instructions(
+        %Account{} = account,
+        current_email,
+        update_email_url_fun
+      )
       when is_function(update_email_url_fun, 1) do
-    {encoded_token, account_token} = AccountToken.build_email_token(account, "change:#{current_email}")
+    {encoded_token, account_token} =
+      AccountToken.build_email_token(account, "change:#{current_email}")
 
     Repo.insert!(account_token)
-    AccountNotifier.deliver_update_email_instructions(account, update_email_url_fun.(encoded_token))
+
+    AccountNotifier.deliver_update_email_instructions(
+      account,
+      update_email_url_fun.(encoded_token)
+    )
   end
 
   @doc ~S"""
@@ -297,7 +357,10 @@ defmodule Handroll.Accounts do
     with {:ok, %{account: account, tokens_to_expire: expired_tokens}} <-
            Ecto.Multi.new()
            |> Ecto.Multi.update(:account, changeset)
-           |> Ecto.Multi.all(:tokens_to_expire, AccountToken.by_account_and_contexts_query(account, :all))
+           |> Ecto.Multi.all(
+             :tokens_to_expire,
+             AccountToken.by_account_and_contexts_query(account, :all)
+           )
            |> Ecto.Multi.delete_all(:tokens, fn %{tokens_to_expire: tokens_to_expire} ->
              AccountToken.delete_all_query(tokens_to_expire)
            end)
