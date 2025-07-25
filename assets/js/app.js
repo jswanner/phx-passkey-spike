@@ -65,23 +65,29 @@ const hooks = {
   },
   getCredential: {
     async getCredential() {
+      const { signal } = controller = new AbortController();
+      const abort = () => controller.abort();
+      document.addEventListener("abort_get_credential", abort, false);
       const json = await this.pushEvent("generate_credential_authentication", {});
       const publicKey = await PublicKeyCredential.parseRequestOptionsFromJSON(json);
-      const credential = await navigator.credentials.get({ mediation: "conditional", publicKey });
-      await this.pushEvent("authenticate_credential", {
-        credential: {
-          ...credential,
-          clientExtensionResults: credential.getClientExtensionResults(),
-          rawId: arrayBufferToBase64(credential.rawId),
-          response: {
-            ...credential.response,
-            authenticatorData: arrayBufferToBase64(credential.response.authenticatorData),
-            clientDataJSON: arrayBufferToBase64(credential.response.clientDataJSON),
-            signature: arrayBufferToBase64(credential.response.signature),
-            userHandle: arrayBufferToBase64(credential.response.userHandle),
+      try {
+        const credential = await navigator.credentials.get({ mediation: "conditional", publicKey, signal });
+        await this.pushEvent("authenticate_credential", {
+          credential: {
+            ...credential,
+            clientExtensionResults: credential.getClientExtensionResults(),
+            rawId: arrayBufferToBase64(credential.rawId),
+            response: {
+              ...credential.response,
+              authenticatorData: arrayBufferToBase64(credential.response.authenticatorData),
+              clientDataJSON: arrayBufferToBase64(credential.response.clientDataJSON),
+              signature: arrayBufferToBase64(credential.response.signature),
+              userHandle: arrayBufferToBase64(credential.response.userHandle),
+            }
           }
-        }
-      });
+        });
+      } catch (_error) { }
+      document.removeEventListener("abort_get_credential", abort);
     },
     async mounted() {
       if (window.PublicKeyCredential && PublicKeyCredential.getClientCapabilities) {

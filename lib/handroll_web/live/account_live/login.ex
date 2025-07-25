@@ -39,7 +39,7 @@ defmodule HandrollWeb.AccountLive.Login do
           id="login_form_magic"
           action={~p"/accounts/log-in"}
           phx-hook="getCredential"
-          phx-submit="submit_magic"
+          phx-submit={JS.dispatch("abort_get_credential") |> JS.push("submit_magic")}
           phx-trigger-action={@trigger_passkey_submit}
         >
           <input type="hidden" name="account[passkey]" value={@token} />
